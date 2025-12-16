@@ -18,25 +18,26 @@ import {
 
 import { getReply } from "../logic/smartReplies";
 
-
 //==================================
 // CHAT SCREEN
 //==================================
 export default function ChatScreen() {
-
   // --- STATE ---
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
-  const flatListRef = useRef(null);
 
-  // --- AUTO SCROLL ---
+  const flatListRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
+
+  //==================================
+  // AUTO SCROLL
+  //==================================
   const scrollToBottom = () => {
-    // Prevent Android crashes by delaying frame
     requestAnimationFrame(() => {
-      if (flatListRef.current) {
-        flatListRef.current.scrollToEnd({ animated: true });
-      }
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      }, 40);
     });
   };
 
@@ -44,7 +45,9 @@ export default function ChatScreen() {
     scrollToBottom();
   }, [messages]);
 
-  // --- TYPING ANIMATION ---
+  //==================================
+  // TYPING INDICATOR ANIMATION
+  //==================================
   const typingOpacity = useRef(new Animated.Value(0.3)).current;
   const typingAnimRef = useRef(null);
 
@@ -66,112 +69,95 @@ export default function ChatScreen() {
       );
       typingAnimRef.current.start();
     } else {
-      if (typingAnimRef.current) typingAnimRef.current.stop();
+      typingAnimRef.current?.stop();
       typingOpacity.stopAnimation(() => typingOpacity.setValue(0.3));
     }
   }, [isTyping]);
 
+  //==================================
+  // MESSAGE FACTORY
+  //==================================
+  const createMessage = (text, sender) => ({
+    id: Date.now().toString(),
+    text,
+    sender,
+    animation: {
+      opacity: new Animated.Value(0),
+      translateY: new Animated.Value(20),
+      scale: new Animated.Value(sender === "user" ? 0.92 : 0.96),
+    },
+  });
 
   //==================================
-  // SEND MESSAGE
+  // MESSAGE ANIMATION
   //==================================
-  const handleSend = () => {
-    if (!input.trim()) return;
-
-    const text = input.trim();
-    setInput("");
-
-    // --- USER ANIMATION VALUES ---
-    const userFade = new Animated.Value(0);
-    const userSlide = new Animated.Value(20);
-    const userScale = new Animated.Value(0.8);
-
-    const newUserMessage = {
-      id: Date.now(),
-      text: text,
-      sender: "user",
-      opacity: userFade,
-      translateY: userSlide,
-      scale: userScale,
-    };
-
-    setMessages((prev) => [...prev, newUserMessage]);
-
-    // USER animation
+  const animateMessage = (msg, config = {}) => {
     Animated.parallel([
-      Animated.timing(userFade, {
+      Animated.timing(msg.animation.opacity, {
         toValue: 1,
-        duration: 280,
-        easing: Easing.out(Easing.quad),
+        duration: config.fade ?? 300,
+        delay: config.delay ?? 0,
+        easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }),
-      Animated.timing(userSlide, {
+      Animated.timing(msg.animation.translateY, {
         toValue: 0,
-        duration: 300,
-        easing: Easing.out(Easing.exp),
+        duration: config.slide ?? 360,
+        delay: config.delay ?? 0,
+        easing: Easing.out(Easing.back(0.8)),
         useNativeDriver: true,
       }),
-      Animated.spring(userScale, {
+      Animated.spring(msg.animation.scale, {
         toValue: 1,
         speed: 12,
         bounciness: 6,
         useNativeDriver: true,
       }),
     ]).start();
-
-    // Start "typing"
-    setIsTyping(true);
-
-    // Prevent double replies
-    const aiDelay = setTimeout(() => {
-      setIsTyping(false);
-
-      // --- AI ANIMATION VALUES ---
-      const aiFade = new Animated.Value(0);
-      const aiSlide = new Animated.Value(20);
-      const aiScale = new Animated.Value(0.95);
-
-      const newAIMessage = {
-        id: Date.now() + 1,
-        text: getReply(text),
-        sender: "ai",
-        opacity: aiFade,
-        translateY: aiSlide,
-        scale: aiScale,
-      };
-
-      setMessages((prev) => [...prev, newAIMessage]);
-
-      // AI animation
-      Animated.parallel([
-        Animated.timing(aiFade, {
-          toValue: 1,
-          duration: 350,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-        Animated.timing(aiSlide, {
-          toValue: 0,
-          duration: 420,
-          easing: Easing.out(Easing.poly(4)),
-          useNativeDriver: true,
-        }),
-        Animated.timing(aiScale, {
-          toValue: 1,
-          duration: 330,
-          easing: Easing.out(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ]).start();
-
-    }, 800);
-
-    return () => clearTimeout(aiDelay);
   };
 
+  //==================================
+  // CORE SEND LOGIC
+  //==================================
+  const sendMessage = (text) => {
+    if (!text.trim() || isTyping) return;
+
+    // Cancel existing typing timer
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = null;
+    }
+
+    const userMsg = createMessage(text, "user");
+    setMessages((prev) => [...prev, userMsg]);
+    animateMessage(userMsg, { fade: 220, slide: 260 });
+
+    setIsTyping(true);
+
+    typingTimeoutRef.current = setTimeout(() => {
+      setIsTyping(false);
+
+      const aiMsg = createMessage(getReply(text), "ai");
+      setMessages((prev) => [...prev, aiMsg]);
+      animateMessage(aiMsg, {
+        fade: 360,
+        slide: 440,
+        delay: 120,
+      });
+
+      typingTimeoutRef.current = null;
+    }, 800);
+  };
+
+  const handleSend = () => {
+    if (!input.trim()) return;
+    const text = input.trim();
+    setInput("");
+    sendMessage(text);
+  };
 
   //==================================
-  // QUICK SUGGESTIONS
+  // SUGGESTION CHIPS (DAY 6)
   //==================================
   const suggestions = [
     "Wi-Fi not working",
@@ -181,8 +167,10 @@ export default function ChatScreen() {
     "VPN connection",
   ];
 
-  const handleSuggestion = (text) => setInput(text);
-
+  const handleSuggestionPress = (text) => {
+    setInput("");
+    sendMessage(text);
+  };
 
   //==================================
   // UI
@@ -191,11 +179,10 @@ export default function ChatScreen() {
     <KeyboardAvoidingView
       style={{ flex: 1 }}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
     >
       <View style={styles.container}>
-
-        {/* --- SUGGESTION ROW --- */}
+        {/* --- SUGGESTION BAR --- */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -205,10 +192,22 @@ export default function ChatScreen() {
           {suggestions.map((item, index) => (
             <TouchableOpacity
               key={index}
-              style={styles.suggestionChip}
-              onPress={() => handleSuggestion(item)}
+              style={[
+                styles.suggestionChip,
+                isTyping && styles.suggestionDisabled,
+              ]}
+              onPress={() => handleSuggestionPress(item)}
+              disabled={isTyping}
+              activeOpacity={0.7}
             >
-              <Text style={styles.suggestionText}>{item}</Text>
+              <Text
+                style={[
+                  styles.suggestionText,
+                  isTyping && styles.suggestionTextDisabled,
+                ]}
+              >
+                {item}
+              </Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -217,30 +216,31 @@ export default function ChatScreen() {
         <FlatList
           ref={flatListRef}
           data={messages}
-          keyExtractor={(item) => item.id.toString()}
-          contentContainerStyle={{ padding: 12, paddingBottom: 120 }}
+          keyExtractor={(item) => item.id}
+          removeClippedSubviews={false}
+          onContentSizeChange={scrollToBottom}
+          keyboardDismissMode="on-drag"
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ padding: 12, paddingBottom: 140 }}
           renderItem={({ item }) => {
-            const opacity = item.opacity || new Animated.Value(1);
-            const translateY = item.translateY || new Animated.Value(0);
-            const scale = item.scale || new Animated.Value(1);
+            if (!item.animation) return null;
+            const { opacity, translateY, scale } = item.animation;
 
             return (
               <Animated.View
                 style={[
                   styles.bubble,
-                  item.sender === "user" ? styles.userBubble : styles.aiBubble,
-                  {
-                    opacity: opacity,
-                    transform: [
-                      { translateY: translateY },
-                      { scale: scale },
-                    ],
-                  },
+                  item.sender === "user"
+                    ? styles.userBubble
+                    : styles.aiBubble,
+                  { opacity, transform: [{ translateY }, { scale }] },
                 ]}
               >
                 <Text
                   style={
-                    item.sender === "user" ? styles.userText : styles.aiText
+                    item.sender === "user"
+                      ? styles.userText
+                      : styles.aiText
                   }
                 >
                   {item.text}
@@ -256,7 +256,9 @@ export default function ChatScreen() {
             <View style={styles.typingAvatar}>
               <Text style={styles.typingAvatarText}>SD</Text>
             </View>
-            <Animated.Text style={[styles.typingText, { opacity: typingOpacity }]}>
+            <Animated.Text
+              style={[styles.typingText, { opacity: typingOpacity }]}
+            >
               SmartDesk is typing…
             </Animated.Text>
           </View>
@@ -273,19 +275,20 @@ export default function ChatScreen() {
             onSubmitEditing={handleSend}
           />
           <TouchableOpacity
-            style={[styles.sendButton, { opacity: input.trim() ? 1 : 0.5 }]}
+            style={[
+              styles.sendButton,
+              { opacity: input.trim() ? 1 : 0.5 },
+            ]}
             onPress={handleSend}
             disabled={!input.trim()}
           >
             <Text style={styles.sendText}>Send</Text>
           </TouchableOpacity>
         </View>
-
       </View>
     </KeyboardAvoidingView>
   );
 }
-
 
 //==================================
 // STYLES
@@ -329,6 +332,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginRight: 8,
   },
+
   typingAvatarText: {
     color: "#fff",
     fontWeight: "700",
@@ -380,16 +384,25 @@ const styles = StyleSheet.create({
   suggestionChip: {
     backgroundColor: "#eef2ff",
     borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     marginRight: 8,
     borderWidth: 1,
     borderColor: "#c7d2fe",
+  },
+
+  suggestionDisabled: {
+    backgroundColor: "#f1f5f9",
+    borderColor: "#e5e7eb",
   },
 
   suggestionText: {
     color: "#1e3a8a",
     fontWeight: "500",
     fontSize: 14,
+  },
+
+  suggestionTextDisabled: {
+    color: "#9ca3af",
   },
 });
