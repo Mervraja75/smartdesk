@@ -1,59 +1,162 @@
 //==================================
 // PURPOSE
 //==================================
-// This file contains SmartDesk's keyword-based replies.
-
-//==================================
-// IMPORTS
-//==================================
+// SmartDesk reply engine with weighted keyword matching
+// to improve accuracy and reduce false positives.
 
 //==================================
 // DATA
 //==================================
-export const smartReplies = [ //export= Chatscreen, const= value doesnt change, smartReplies= name of the data
-    {
-        keywords: ["wifi", "wi-fi", "internet"], //keywords to look for in the user's message
-        reply: "Try reconnecting to the Wi-Fi or toggling Airplane Mode. If the issue continues, check if other devices have the same problem.",
-    },
+export const smartReplies = [
+  {
+    category: "wifi",
+    keywords: [
+      "wifi",
+      "wi-fi",
+      "internet",
+      "no internet",
+      "slow internet",
+      "disconnected",
+      "network issue",
+      "can't connect",
+      "cannot connect",
+    ],
+    reply: `Let’s troubleshoot your Wi-Fi step by step:
 
-    {
-        keywords: ["printer", "printing", "print"], //keywords for printer words
-        reply: "Check if the printer is online and selected correctly. Make sure it has paper and is not paused.",
-    },
+1️⃣ Make sure Wi-Fi is turned ON  
+2️⃣ Reconnect to the network  
+3️⃣ Restart your device  
+4️⃣ Check if other devices have the same issue  
 
-    {
-        keywords: ["email", "outlook", "mail", "gmail"], //keywords for mail
-        reply: "Try restarting Outlook or re-adding your account. Also check if your mailbox storage is full.",
-    },
+If it still doesn’t work:
+• Phone or laptop?
+• On campus or at home?`,
+  },
 
-    {
-        keywords: ["password", "reset", "forgot"], //keywords for password
-        reply: "You can reset your password using the official reset page. After resetting, wait 5 minutes for the changes to sync.",
-    },
+  {
+    category: "printer",
+    keywords: [
+      "printer offline",
+      "print job",
+      "print queue",
+      "stuck printing",
+      "not printing",
+      "printer",
+    ],
+    reply: `Let’s troubleshoot your printer:
 
-    {
-    keywords: ["vpn", "globalprotect", "connect"],
-    reply: "Ensure GlobalProtect is installed and you're signed in. If it keeps disconnecting, restart your device and try again.",
-    },
+1️⃣ Make sure the printer is powered ON  
+2️⃣ Check if it shows as “Offline”  
+3️⃣ Clear stuck print jobs in the queue  
+4️⃣ Confirm the correct printer is selected  
+5️⃣ Restart both the printer and your device  
 
-]
+Still stuck?
+• USB or Wi-Fi printer?
+• Mac or Windows?`,
+  },
+
+  {
+    category: "email",
+    keywords: [
+      "email not working",
+      "not receiving email",
+      "email setup",
+      "email login",
+      "email sync",
+      "outlook",
+      "gmail",
+      "email",
+    ],
+    reply: `Let’s fix your email:
+
+1️⃣ Check your internet connection  
+2️⃣ Restart the email app  
+3️⃣ Confirm your email address and password  
+4️⃣ Check if your mailbox is full  
+5️⃣ Try removing and re-adding the account  
+
+Tell me:
+• Outlook or Gmail?
+• Phone or computer?`,
+  },
+
+  {
+    category: "account",
+    keywords: [
+      "can't login",
+      "cannot login",
+      "forgot password",
+      "password reset",
+      "account locked",
+      "verification code",
+      "2fa",
+      "two factor",
+      "login",
+      "password",
+    ],
+    reply: `Let’s fix your account access:
+
+1️⃣ Check Caps Lock  
+2️⃣ Re-enter your username and password  
+3️⃣ Reset your password if needed  
+4️⃣ Wait a few minutes before trying again  
+5️⃣ If using 2FA, ensure your device time is correct  
+
+Still stuck?
+• Password issue or 2FA code?
+• Phone or computer?`,
+  },
+
+  {
+    category: "vpn",
+    keywords: ["vpn", "globalprotect"],
+    reply:
+      "Make sure GlobalProtect is installed and signed in. If it disconnects, restart your device and try again.",
+  },
+];
 
 //==================================
 // LOGIC
 //==================================
 
-export function getReply(userMessage) { 
-    const message = userMessage.toLowerCase(); //convert everything to lowercase
+// Normalize text (lowercase + remove punctuation)
+function normalize(text) {
+  return text.toLowerCase().replace(/[^\w\s]/g, "");
+}
 
-    for (let entry of smartReplies) { //for = start a loop, smartReplies = loop over the created array
-        for (let keyword of entry.keywords){ //looping through keywords
-            if (message.includes(keyword)){ //check if keyword appears
-                return entry.reply; //stops function & sends back correct message
-            }
+// Score how many keywords match
+function scoreEntry(message, entry) {
+  let score = 0;
 
-        } 
+  for (let keyword of entry.keywords) {
+    if (message.includes(keyword)) {
+      score += keyword.split(" ").length; // longer phrases score higher
     }
+  }
 
-    return "I'm still learning about that issue. Try rephrasing or giving more details!"; // no keyword matched = default reply.
+  return score;
+}
 
+export function getReply(userMessage) {
+  const message = normalize(userMessage);
+
+  let bestMatch = null;
+  let highestScore = 0;
+
+  for (let entry of smartReplies) {
+    const score = scoreEntry(message, entry);
+
+    if (score > highestScore) {
+      highestScore = score;
+      bestMatch = entry;
+    }
+  }
+
+  if (bestMatch && highestScore > 0) {
+    return bestMatch.reply;
+  }
+
+  // Safe fallback
+  return "I want to make sure I understand — could you tell me what device you’re using and what’s not working?";
 }
