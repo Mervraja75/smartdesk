@@ -1,47 +1,114 @@
 // FaqScreen.js
-import React, { useState } from 'react'; // useState: lets screen remember what user types
-import { View, Text, FlatList, TextInput, StyleSheet, TouchableOpacity } from 'react-native';
-import { faqData } from '../data/faqData'; // import local FAQ database
+import React, { useState, useRef, useEffect } from 'react';
+import {
+  View,
+  Text,
+  FlatList,
+  TextInput,
+  StyleSheet,
+  TouchableOpacity,
+  Animated,
+} from 'react-native';
+import { faqData } from '../data/faqData';
+
+// Highlight matched search text inside a string
+function HighlightText({ text, query }) {
+  if (!query) return <Text>{text}</Text>;
+
+  const lowerText = text.toLowerCase();
+  const lowerQuery = query.toLowerCase();
+
+  if (!lowerText.includes(lowerQuery)) {
+    return <Text>{text}</Text>;
+  }
+
+  const parts = text.split(new RegExp(`(${query})`, 'ig'));
+
+  return (
+    <Text>
+      {parts.map((part, index) =>
+        part.toLowerCase() === lowerQuery ? (
+          <Text key={index} style={styles.highlight}>
+            {part}
+          </Text>
+        ) : (
+          <Text key={index}>{part}</Text>
+        )
+      )}
+    </Text>
+  );
+}
 
 export default function FaqScreen() {
-  const [searchText, setSearchText] = useState(''); // store the search text
-  const [expandedId, setExpandedId] = useState(null); // which FAQ is open
+  const [searchText, setSearchText] = useState('');
+  const [expandedId, setExpandedId] = useState(null);
 
-  // Toggle Logic (open/close an FAQ card)
+  // Single animation value (Day 17)
+  const animation = useRef(new Animated.Value(0)).current;
+
+  // Reset accordion when search changes (prevents weird states)
+  useEffect(() => {
+    setExpandedId(null);
+    animation.setValue(0);
+  }, [searchText]);
+
   const toggleExpand = (id) => {
-    setExpandedId((prev) => (prev === id ? null : id));
+    const isOpening = expandedId !== id;
+    setExpandedId(isOpening ? id : null);
+
+    Animated.timing(animation, {
+      toValue: isOpening ? 1 : 0,
+      duration: 220,
+      useNativeDriver: false,
+    }).start();
   };
 
-  // Filter FAQs based on user input
-  const filteredData = faqData.filter((item) =>
-    item.question.toLowerCase().includes(searchText.toLowerCase())
-  );
+  const filteredData = faqData.filter((item) => {
+    const q = searchText.toLowerCase();
+    return (
+      item.question.toLowerCase().includes(q) ||
+      item.answer.toLowerCase().includes(q) ||
+      item.category.toLowerCase().includes(q)
+    );
+  });
 
-  // 🧠 Debugging logs — now correctly placed INSIDE the component
-  console.log('Search text:', searchText);
-  console.log('Results:', filteredData.length);
-
-  // Tappable + conditional answer
   const renderItem = ({ item }) => {
     const isOpen = expandedId === item.id;
+
+    const rotate = animation.interpolate({
+      inputRange: [0, 1],
+      outputRange: ['0deg', '180deg'],
+    });
+
+    const height = animation.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0, 90],
+    });
+
     return (
       <View style={styles.card}>
         <TouchableOpacity
-          onPress={() => toggleExpand(item.id)} 
-          accessibilityRole="button"
-          accessibilityState={{ expanded: isOpen }}
+          onPress={() => toggleExpand(item.id)}
           style={styles.row}
         >
-          <View style ={styles.chevronBox}>
-            <Text style={styles.chevron}>{isOpen ? '▲' : '▼'}</Text>
-          </View>
+          <Text style={styles.question}>
+            <HighlightText text={item.question} query={searchText} />
+          </Text>
+
+          <Animated.Text
+            style={[styles.chevron, { transform: [{ rotate }] }]}
+          >
+            ▼
+          </Animated.Text>
         </TouchableOpacity>
 
         {isOpen && (
-          <View style={styles.answerBox}>
-            <Text style={styles.answer}>{item.answer}</Text>
+          <Animated.View style={[styles.answerBox, { height }]}>
+            <Text style={styles.answer}>
+              <HighlightText text={item.answer} query={searchText} />
+            </Text>
             <Text style={styles.category}>Category: {item.category}</Text>
-          </View>
+          </Animated.View>
         )}
       </View>
     );
@@ -51,28 +118,35 @@ export default function FaqScreen() {
     <View style={styles.container}>
       <Text style={styles.title}>SmartDesk FAQs</Text>
 
-      {/* Search bar for filtering questions */}
       <TextInput
         style={styles.searchBox}
-        placeholder="Search your issue..."
+        placeholder="Search by issue, keyword, or category…"
         value={searchText}
         onChangeText={setSearchText}
+        clearButtonMode="while-editing"
       />
 
-      {/* Display filtered list of FAQs */}
       <FlatList
-        data={filteredData} // show only matching questions
-        renderItem={renderItem} // ✅ fixed capitalization: was renderitem
-        keyExtractor={(item) => item.id.toString()} // unique ID
+        data={filteredData}
+        renderItem={renderItem}
+        keyExtractor={(item) => item.id.toString()}
+        keyboardShouldPersistTaps="handled"
         ListEmptyComponent={
-          <Text style={styles.noResults}>No results found.</Text>
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyTitle}>No results found</Text>
+            <Text style={styles.emptyText}>
+              Try a different keyword like “Wi-Fi”, “printer”, or “password”.
+            </Text>
+          </View>
         }
       />
     </View>
   );
 }
 
-// 💅 Style section
+//==================================
+// STYLES
+//==================================
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -100,54 +174,56 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 16,
     marginBottom: 12,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
     elevation: 3,
-    overflow: 'hidden', //keeps the arrow inside the rounded circle
   },
   row: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 12,
+    alignItems: 'center',
   },
   question: {
-    flex: 1, //lets the text wrap and not push the arrow out
     fontSize: 16,
     fontWeight: '600',
     color: '#34495e',
-    marginRight: 8, 
-  },
-  chevronBox: {
-  width: 28,                 // fixed width so it stays inside the card
-  alignItems: 'center',
-  justifyContent: 'center',
+    flex: 1,
+    marginRight: 8,
   },
   chevron: {
     fontSize: 16,
     color: '#34495e',
   },
   answerBox: {
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-    paddingTop: 10,
-    marginTop: 8,
+    overflow: 'hidden',
+    marginTop: 10,
   },
   answer: {
     fontSize: 14,
     color: '#555',
-    marginBottom: 4,
   },
   category: {
     fontSize: 12,
     color: '#888',
     fontStyle: 'italic',
+    marginTop: 4,
   },
-  noResults: {
-    textAlign: 'center',
-    color: '#888',
+  highlight: {
+    backgroundColor: '#fff3cd',
+    color: '#92400e',
+    fontWeight: '700',
+  },
+  emptyState: {
+    marginTop: 40,
+    alignItems: 'center',
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 6,
+    color: '#374151',
+  },
+  emptyText: {
     fontSize: 14,
-    marginTop: 20,
+    color: '#6b7280',
+    textAlign: 'center',
   },
 });

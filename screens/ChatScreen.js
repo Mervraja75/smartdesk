@@ -14,9 +14,11 @@ import {
   KeyboardAvoidingView,
   Platform,
   Easing,
+  Alert,
 } from "react-native";
 
 import { getReply } from "../logic/smartReplies";
+import { saveChatSession } from "../storage/chatStorage";
 
 //==================================
 // CHAT SCREEN
@@ -122,27 +124,38 @@ export default function ChatScreen() {
   const sendMessage = (text) => {
     if (!text.trim() || isTyping) return;
 
-    // Cancel existing typing timer
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
       typingTimeoutRef.current = null;
     }
 
     const userMsg = createMessage(text, "user");
-    setMessages((prev) => [...prev, userMsg]);
-    animateMessage(userMsg, { fade: 220, slide: 260 });
+
+    setMessages((prev) => {
+      const updated = [...prev, userMsg];
+      animateMessage(userMsg, { fade: 220, slide: 260 });
+      return updated;
+    });
 
     setIsTyping(true);
 
     typingTimeoutRef.current = setTimeout(() => {
       setIsTyping(false);
 
-      const aiMsg = createMessage(getReply(text), "ai");
-      setMessages((prev) => [...prev, aiMsg]);
-      animateMessage(aiMsg, {
-        fade: 360,
-        slide: 440,
-        delay: 120,
+      setMessages((prev) => {
+        const aiMsg = createMessage(getReply(text), "ai");
+        const updated = [...prev, aiMsg];
+
+        // ✅ Save completed chat session
+        saveChatSession(updated);
+
+        animateMessage(aiMsg, {
+          fade: 360,
+          slide: 440,
+          delay: 120,
+        });
+
+        return updated;
       });
 
       typingTimeoutRef.current = null;
@@ -157,7 +170,34 @@ export default function ChatScreen() {
   };
 
   //==================================
-  // SUGGESTION CHIPS (DAY 6)
+  // CLEAR CHAT (DAY 25)
+  //==================================
+  const clearCurrentChat = () => {
+    Alert.alert(
+      "Start new chat?",
+      "This will clear the current conversation. Your history will remain.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Clear",
+          style: "destructive",
+          onPress: () => {
+            setMessages([]);
+            setInput("");
+            setIsTyping(false);
+
+            if (typingTimeoutRef.current) {
+              clearTimeout(typingTimeoutRef.current);
+              typingTimeoutRef.current = null;
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  //==================================
+  // SUGGESTION CHIPS (ONBOARDING ONLY)
   //==================================
   const suggestions = [
     "Wi-Fi not working",
@@ -168,7 +208,6 @@ export default function ChatScreen() {
   ];
 
   const handleSuggestionPress = (text) => {
-    setInput("");
     sendMessage(text);
   };
 
@@ -182,35 +221,35 @@ export default function ChatScreen() {
       keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
     >
       <View style={styles.container}>
-        {/* --- SUGGESTION BAR --- */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.suggestionBar}
-          contentContainerStyle={{ paddingHorizontal: 12 }}
-        >
-          {suggestions.map((item, index) => (
-            <TouchableOpacity
-              key={index}
-              style={[
-                styles.suggestionChip,
-                isTyping && styles.suggestionDisabled,
-              ]}
-              onPress={() => handleSuggestionPress(item)}
-              disabled={isTyping}
-              activeOpacity={0.7}
-            >
-              <Text
-                style={[
-                  styles.suggestionText,
-                  isTyping && styles.suggestionTextDisabled,
-                ]}
-              >
-                {item}
-              </Text>
+
+        {/* --- CHAT CONTROLS --- */}
+        {messages.length > 0 && (
+          <View style={styles.chatControls}>
+            <TouchableOpacity onPress={clearCurrentChat}>
+              <Text style={styles.clearText}>New Chat</Text>
             </TouchableOpacity>
-          ))}
-        </ScrollView>
+          </View>
+        )}
+
+        {/* --- SUGGESTION CHIPS --- */}
+        {messages.length === 0 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingHorizontal: 12, paddingTop: 6 }}
+          >
+            {suggestions.map((item, index) => (
+              <TouchableOpacity
+                key={index}
+                style={styles.suggestionChip}
+                onPress={() => handleSuggestionPress(item)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.suggestionText}>{item}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
 
         {/* --- CHAT LIST --- */}
         <FlatList
@@ -223,7 +262,6 @@ export default function ChatScreen() {
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{ padding: 12, paddingBottom: 140 }}
           renderItem={({ item }) => {
-            if (!item.animation) return null;
             const { opacity, translateY, scale } = item.animation;
 
             return (
@@ -295,6 +333,18 @@ export default function ChatScreen() {
 //==================================
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f7f9fb" },
+
+  chatControls: {
+    alignItems: "flex-end",
+    paddingHorizontal: 16,
+    paddingTop: 6,
+  },
+
+  clearText: {
+    color: "#ef4444",
+    fontSize: 13,
+    fontWeight: "600",
+  },
 
   bubble: {
     maxWidth: "75%",
@@ -374,13 +424,6 @@ const styles = StyleSheet.create({
 
   sendText: { color: "#fff", fontWeight: "600" },
 
-  suggestionBar: {
-    backgroundColor: "#fff",
-    paddingVertical: 6,
-    borderBottomWidth: 1,
-    borderColor: "#e5e7eb",
-  },
-
   suggestionChip: {
     backgroundColor: "#eef2ff",
     borderRadius: 16,
@@ -391,18 +434,9 @@ const styles = StyleSheet.create({
     borderColor: "#c7d2fe",
   },
 
-  suggestionDisabled: {
-    backgroundColor: "#f1f5f9",
-    borderColor: "#e5e7eb",
-  },
-
   suggestionText: {
     color: "#1e3a8a",
     fontWeight: "500",
     fontSize: 14,
-  },
-
-  suggestionTextDisabled: {
-    color: "#9ca3af",
   },
 });
