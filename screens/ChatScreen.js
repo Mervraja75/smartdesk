@@ -21,6 +21,13 @@ import { getReply } from "../logic/smartReplies";
 import { saveChatSession } from "../storage/chatStorage";
 
 //==================================
+// AI BACKEND URL (IMPORTANT)
+//==================================
+// ❗ On iOS Expo Go (real phone), "localhost" points to your PHONE, not your laptop.
+// Replace with your laptop's LAN IP, e.g. "http://192.168.0.12:3001/chat"
+const AI_URL = "http://10.250.235.253:3001/chat";
+
+//==================================
 // CHAT SCREEN
 //==================================
 export default function ChatScreen() {
@@ -119,6 +126,29 @@ export default function ChatScreen() {
   };
 
   //==================================
+  // AI FETCH
+  //==================================
+  const fetchAIReply = async (text, history) => {
+    const payloadHistory = (history || []).slice(-8).map((m) => ({
+      sender: m.sender,
+      text: m.text,
+    }));
+
+    const response = await fetch(AI_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: text, history: payloadHistory }),
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data?.error || "AI request failed");
+    }
+
+    return data.reply;
+  };
+
+  //==================================
   // CORE SEND LOGIC
   //==================================
   const sendMessage = (text) => {
@@ -139,11 +169,28 @@ export default function ChatScreen() {
 
     setIsTyping(true);
 
-    typingTimeoutRef.current = setTimeout(() => {
+    typingTimeoutRef.current = setTimeout(async () => {
       setIsTyping(false);
 
+      // We need the latest messages for history; fetch them safely.
+      let historySnapshot = [];
       setMessages((prev) => {
-        const aiMsg = createMessage(getReply(text), "ai");
+        historySnapshot = prev;
+        return prev;
+      });
+
+      let aiText = "";
+      try {
+        aiText = await fetchAIReply(text, historySnapshot);
+      } catch (e) {
+        // Fallback to local smart replies
+        aiText =
+          "AI is unavailable right now — using Smart Replies.\n\n" + getReply(text);
+        console.log("AI fallback:", e?.message || e);
+      }
+
+      setMessages((prev) => {
+        const aiMsg = createMessage(aiText, "ai");
         const updated = [...prev, aiMsg];
 
         // ✅ Save completed chat session
@@ -221,7 +268,6 @@ export default function ChatScreen() {
       keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
     >
       <View style={styles.container}>
-
         {/* --- CHAT CONTROLS --- */}
         {messages.length > 0 && (
           <View style={styles.chatControls}>
@@ -268,18 +314,12 @@ export default function ChatScreen() {
               <Animated.View
                 style={[
                   styles.bubble,
-                  item.sender === "user"
-                    ? styles.userBubble
-                    : styles.aiBubble,
+                  item.sender === "user" ? styles.userBubble : styles.aiBubble,
                   { opacity, transform: [{ translateY }, { scale }] },
                 ]}
               >
                 <Text
-                  style={
-                    item.sender === "user"
-                      ? styles.userText
-                      : styles.aiText
-                  }
+                  style={item.sender === "user" ? styles.userText : styles.aiText}
                 >
                   {item.text}
                 </Text>
@@ -294,9 +334,7 @@ export default function ChatScreen() {
             <View style={styles.typingAvatar}>
               <Text style={styles.typingAvatarText}>SD</Text>
             </View>
-            <Animated.Text
-              style={[styles.typingText, { opacity: typingOpacity }]}
-            >
+            <Animated.Text style={[styles.typingText, { opacity: typingOpacity }]}>
               SmartDesk is typing…
             </Animated.Text>
           </View>
@@ -313,10 +351,7 @@ export default function ChatScreen() {
             onSubmitEditing={handleSend}
           />
           <TouchableOpacity
-            style={[
-              styles.sendButton,
-              { opacity: input.trim() ? 1 : 0.5 },
-            ]}
+            style={[styles.sendButton, { opacity: input.trim() ? 1 : 0.5 }]}
             onPress={handleSend}
             disabled={!input.trim()}
           >
