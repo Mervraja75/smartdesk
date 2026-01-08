@@ -52,3 +52,7 @@ yarn-error.*
 
 # Metro bundler cache
 metro-cache/
+
+# Secrets
+.env
+backend/.env
