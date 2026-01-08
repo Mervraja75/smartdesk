@@ -63,5 +63,5 @@ const PORT = process.env.PORT || 3001;
 app.listen(PORT, "0.0.0.0", () => {
   console.log("✅ SmartDesk backend running:");
   console.log(`   Local:   http://localhost:${PORT}`);
-  console.log(`   Network: http://10.250.235.253:${PORT}`);
+  console.log(`   Network: http://192.168.50.240:${PORT}`);
 });

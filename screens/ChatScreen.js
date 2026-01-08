@@ -25,7 +25,7 @@ import { saveChatSession } from "../storage/chatStorage";
 //==================================
 // ❗ On iOS Expo Go (real phone), "localhost" points to your PHONE, not your laptop.
 // Replace with your laptop's LAN IP, e.g. "http://192.168.0.12:3001/chat"
-const AI_URL = "http://10.250.235.253:3001/chat";
+const AI_URL = "http://192.168.50.240:3001/chat";
 
 //==================================
 // CHAT SCREEN
