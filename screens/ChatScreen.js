@@ -23,7 +23,7 @@ import { saveChatSession } from "../storage/chatStorage";
 //==================================
 // AI BACKEND URL (IMPORTANT)
 //==================================
-// ❗ On iOS Expo Go (real phone), "localhost" points to your PHONE, not your laptop.
+// On iOS Expo Go (real phone), "localhost" points to your PHONE, not your laptop.
 // Replace with your laptop's LAN IP, e.g. "http://192.168.0.12:3001/chat"
 const AI_URL = "http://192.168.50.240:3001/chat";
 
