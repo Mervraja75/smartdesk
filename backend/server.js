@@ -57,11 +57,9 @@ app.post("/chat", async (req, res) => {
   }
 });
 
-// ✅ IMPORTANT: bind to 0.0.0.0 so other devices (your phone) can access it
+// ✅ Render-friendly: bind to 0.0.0.0 and use PORT from environment
 const PORT = process.env.PORT || 3001;
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log("✅ SmartDesk backend running:");
-  console.log(`   Local:   http://localhost:${PORT}`);
-  console.log(`   Network: http://192.168.50.240:${PORT}`);
+  console.log(`✅ SmartDesk backend running on port ${PORT}`);
 });
