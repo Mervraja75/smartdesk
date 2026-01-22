@@ -11,11 +11,73 @@ app.use(express.json());
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+//==================================
+// PERFORMANCE HELPERS
+//==================================
+
+// Trim history to reduce latency + cost
+function trimHistory(history = [], maxMessages = 4) {
+  const sliced = Array.isArray(history) ? history.slice(-maxMessages) : [];
+  return sliced.map((m) => ({
+    role: m.sender === "user" ? "user" : "assistant",
+    content: String(m.text || ""),
+  }));
+}
+
+// Simple in-memory cache (Render will reset it on restart — OK for Phase 1)
+const CACHE_MAX = 300;
+const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const replyCache = new Map(); // key -> { reply, expiresAt }
+
+function makeCacheKey(message) {
+  // cache by normalized message (simple + effective)
+  return String(message || "").trim().toLowerCase();
+}
+
+function getFromCache(key) {
+  const hit = replyCache.get(key);
+  if (!hit) return null;
+
+  if (Date.now() > hit.expiresAt) {
+    replyCache.delete(key);
+    return null;
+  }
+  return hit.reply;
+}
+
+function setCache(key, reply) {
+  if (!key || !reply) return;
+
+  replyCache.set(key, {
+    reply,
+    expiresAt: Date.now() + CACHE_TTL_MS,
+  });
+
+  // Evict oldest if over max size
+  if (replyCache.size > CACHE_MAX) {
+    const oldestKey = replyCache.keys().next().value;
+    replyCache.delete(oldestKey);
+  }
+}
+
+// Optional: light cleanup sometimes
+function cleanupCache() {
+  const now = Date.now();
+  for (const [key, val] of replyCache.entries()) {
+    if (now > val.expiresAt) replyCache.delete(key);
+  }
+}
+
+//==================================
+// ROUTES
+//==================================
 app.get("/", (req, res) => {
   res.json({ ok: true, service: "SmartDesk AI backend" });
 });
 
 app.post("/chat", async (req, res) => {
+  const started = Date.now();
+
   try {
     const { message, history = [] } = req.body;
 
@@ -23,11 +85,22 @@ app.post("/chat", async (req, res) => {
       return res.status(400).json({ error: "Missing message" });
     }
 
-    // Keep history short (cost + speed)
-    const trimmedHistory = history.slice(-8).map((m) => ({
-      role: m.sender === "user" ? "user" : "assistant",
-      content: m.text,
-    }));
+    // Cleanup cache occasionally (cheap)
+    if (Math.random() < 0.05) cleanupCache();
+
+    // ✅ 1) Cache check (FAST)
+    const cacheKey = makeCacheKey(message);
+    const cachedReply = getFromCache(cacheKey);
+    if (cachedReply) {
+      return res.json({
+        reply: cachedReply,
+        cached: true,
+        ms: Date.now() - started,
+      });
+    }
+
+    // ✅ 2) Trim history (faster + cheaper)
+    const trimmedHistory = trimHistory(history, 4);
 
     const completion = await client.chat.completions.create({
       model: "gpt-4o-mini",
@@ -44,13 +117,21 @@ app.post("/chat", async (req, res) => {
         { role: "user", content: message },
       ],
       temperature: 0.4,
+      max_tokens: 250, // ✅ keeps replies short = faster
     });
 
     const reply =
       completion.choices?.[0]?.message?.content?.trim() ||
       "Sorry, I couldn't respond.";
 
-    res.json({ reply });
+    // ✅ Save to cache
+    setCache(cacheKey, reply);
+
+    res.json({
+      reply,
+      cached: false,
+      ms: Date.now() - started,
+    });
   } catch (err) {
     console.error("AI error:", err?.message || err);
     res.status(500).json({ error: "AI request failed" });

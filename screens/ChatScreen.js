@@ -15,17 +15,23 @@ import {
   Platform,
   Easing,
   Alert,
+  AppState,
 } from "react-native";
 
 import { getReply } from "../logic/smartReplies";
-import { saveChatSession } from "../storage/chatStorage";
+
+// ✅ UPDATED STORAGE FUNCTIONS
+import {
+  getCurrentSession,
+  saveCurrentSession,
+  finalizeCurrentSession,
+  clearCurrentSession,
+} from "../storage/chatStorage";
 
 //==================================
 // AI BACKEND URL (IMPORTANT)
 //==================================
-// On iOS Expo Go (real phone), "localhost" points to your PHONE, not your laptop.
-// Replace with your laptop's LAN IP, e.g. "http://192.168.0.12:3001/chat"
-const AI_URL = "http://192.168.50.240:3001/chat";
+const AI_URL = "https://smartdesk-backend-4th1.onrender.com/chat";
 
 //==================================
 // CHAT SCREEN
@@ -38,6 +44,10 @@ export default function ChatScreen() {
 
   const flatListRef = useRef(null);
   const typingTimeoutRef = useRef(null);
+
+  // Live session info
+  const sessionIdRef = useRef(Date.now().toString());
+  const sessionCreatedAtRef = useRef(Date.now());
 
   //==================================
   // AUTO SCROLL
@@ -87,7 +97,7 @@ export default function ChatScreen() {
   // MESSAGE FACTORY
   //==================================
   const createMessage = (text, sender) => ({
-    id: Date.now().toString(),
+    id: Date.now().toString() + Math.random().toString(16).slice(2),
     text,
     sender,
     animation: {
@@ -126,6 +136,65 @@ export default function ChatScreen() {
   };
 
   //==================================
+  // SAVE LIVE SESSION (NOT HISTORY)
+  //==================================
+  const persistLiveSession = async (nextMessages) => {
+    try {
+      const payload = {
+        id: sessionIdRef.current,
+        createdAt: sessionCreatedAtRef.current,
+        messages: nextMessages.map((m) => ({
+          sender: m.sender,
+          text: m.text,
+        })),
+      };
+      await saveCurrentSession(payload);
+    } catch (e) {
+      console.log("Failed to persist live session:", e?.message || e);
+    }
+  };
+
+  //==================================
+  // LOAD LIVE SESSION ON MOUNT
+  //==================================
+  useEffect(() => {
+    (async () => {
+      const session = await getCurrentSession();
+      if (session?.messages?.length) {
+        sessionIdRef.current = session.id || Date.now().toString();
+        sessionCreatedAtRef.current = session.createdAt || Date.now();
+
+        // Restore messages with safe animations
+        const restored = session.messages.map((m) => ({
+          id: Date.now().toString() + Math.random().toString(16).slice(2),
+          text: m.text,
+          sender: m.sender,
+          animation: {
+            opacity: new Animated.Value(1),
+            translateY: new Animated.Value(0),
+            scale: new Animated.Value(1),
+          },
+        }));
+        setMessages(restored);
+      }
+    })();
+  }, []);
+
+  //==================================
+  // FINALIZE WHEN APP CLOSES / BACKGROUNDS
+  //==================================
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", async (nextState) => {
+      // When app goes to background, treat as "conversation ended"
+      if (nextState === "background" || nextState === "inactive") {
+        await finalizeCurrentSession();
+      }
+    });
+
+    return () => sub.remove();
+  }, []);
+
+  //==================================
   // AI FETCH
   //==================================
   const fetchAIReply = async (text, history) => {
@@ -134,11 +203,15 @@ export default function ChatScreen() {
       text: m.text,
     }));
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
+
     const response = await fetch(AI_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message: text, history: payloadHistory }),
-    });
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timeout));
 
     const data = await response.json();
     if (!response.ok) {
@@ -164,6 +237,10 @@ export default function ChatScreen() {
     setMessages((prev) => {
       const updated = [...prev, userMsg];
       animateMessage(userMsg, { fade: 220, slide: 260 });
+
+      // ✅ Save to LIVE session
+      persistLiveSession(updated);
+
       return updated;
     });
 
@@ -172,7 +249,7 @@ export default function ChatScreen() {
     typingTimeoutRef.current = setTimeout(async () => {
       setIsTyping(false);
 
-      // We need the latest messages for history; fetch them safely.
+      // Take snapshot for history context
       let historySnapshot = [];
       setMessages((prev) => {
         historySnapshot = prev;
@@ -183,9 +260,9 @@ export default function ChatScreen() {
       try {
         aiText = await fetchAIReply(text, historySnapshot);
       } catch (e) {
-        // Fallback to local smart replies
         aiText =
-          "AI is unavailable right now — using Smart Replies.\n\n" + getReply(text);
+          "AI is unavailable right now — using Smart Replies.\n\n" +
+          getReply(text);
         console.log("AI fallback:", e?.message || e);
       }
 
@@ -193,14 +270,10 @@ export default function ChatScreen() {
         const aiMsg = createMessage(aiText, "ai");
         const updated = [...prev, aiMsg];
 
-        // ✅ Save completed chat session
-        saveChatSession(updated);
+        animateMessage(aiMsg, { fade: 360, slide: 440, delay: 120 });
 
-        animateMessage(aiMsg, {
-          fade: 360,
-          slide: 440,
-          delay: 120,
-        });
+        // ✅ Save to LIVE session (still not history)
+        persistLiveSession(updated);
 
         return updated;
       });
@@ -217,21 +290,32 @@ export default function ChatScreen() {
   };
 
   //==================================
-  // CLEAR CHAT (DAY 25)
+  // NEW CHAT (FINALIZE THEN CLEAR)
   //==================================
   const clearCurrentChat = () => {
     Alert.alert(
       "Start new chat?",
-      "This will clear the current conversation. Your history will remain.",
+      "This will end the current conversation and save it to History.",
       [
         { text: "Cancel", style: "cancel" },
         {
-          text: "Clear",
+          text: "Start New",
           style: "destructive",
-          onPress: () => {
+          onPress: async () => {
+            // ✅ Save ONE session to History
+            await finalizeCurrentSession();
+
+            // Clear UI
             setMessages([]);
             setInput("");
             setIsTyping(false);
+
+            // Reset session refs
+            sessionIdRef.current = Date.now().toString();
+            sessionCreatedAtRef.current = Date.now();
+
+            // Clear live session storage
+            await clearCurrentSession();
 
             if (typingTimeoutRef.current) {
               clearTimeout(typingTimeoutRef.current);

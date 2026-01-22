@@ -1,17 +1,21 @@
 //==================================
 // IMPORTS
 //==================================
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
   View,
   Text,
-  FlatList,
   StyleSheet,
   TouchableOpacity,
+  Alert,
 } from "react-native";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
+import { SwipeListView } from "react-native-swipe-list-view";
 
-import { getChatHistory } from "../storage/chatStorage";
+import {
+  getChatHistory,
+  deleteHistorySession,
+} from "../storage/chatStorage";
 
 //==================================
 // HISTORY SCREEN
@@ -20,43 +24,79 @@ export default function HistoryScreen() {
   const [history, setHistory] = useState([]);
   const navigation = useNavigation();
 
-  // Load history on mount
-  useEffect(() => {
-    loadHistory();
-  }, []);
-
   const loadHistory = async () => {
     const data = await getChatHistory();
     setHistory(data);
   };
 
+  // Reload history whenever screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      loadHistory();
+    }, [])
+  );
+
+  const confirmDelete = (sessionId) => {
+    Alert.alert(
+      "Delete this chat?",
+      "This conversation will be permanently removed.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            // Optimistic update
+            setHistory((prev) => prev.filter((s) => s.id !== sessionId));
+            await deleteHistorySession(sessionId);
+          },
+        },
+      ]
+    );
+  };
+
+  // Front view (normal card)
   const renderItem = ({ item }) => {
     const firstUserMessage =
-      item.messages.find((m) => m.sender === "user")?.text ||
-      "Conversation";
+      item.messages.find((m) => m.sender === "user")?.text || "Conversation";
 
     const date = new Date(item.createdAt).toLocaleDateString();
 
     return (
       <TouchableOpacity
         style={styles.card}
-        activeOpacity={0.7}
-        onPress={() =>
-          navigation.navigate("Conversation", { session: item })
-        }
+        activeOpacity={0.8}
+        onPress={() => navigation.navigate("Conversation", { session: item })}
       >
-        <Text style={styles.preview}>{firstUserMessage}</Text>
+        <Text style={styles.preview} numberOfLines={2}>
+          {firstUserMessage}
+        </Text>
         <Text style={styles.date}>{date}</Text>
       </TouchableOpacity>
     );
   };
 
+  // Back view (revealed on swipe)
+  const renderHiddenItem = ({ item }) => (
+    <View style={styles.rowBack}>
+      <TouchableOpacity
+        style={styles.deleteButton}
+        onPress={() => confirmDelete(item.id)}
+      >
+        <Text style={styles.deleteText}>Delete</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
   return (
     <View style={styles.container}>
-      <FlatList
+      <SwipeListView
         data={history}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
+        renderHiddenItem={renderHiddenItem}
+        rightOpenValue={-90}
+        disableRightSwipe
         contentContainerStyle={{ padding: 16 }}
         ListEmptyComponent={
           <View style={styles.emptyState}>
@@ -99,6 +139,30 @@ const styles = StyleSheet.create({
   date: {
     fontSize: 12,
     color: "#6b7280",
+  },
+
+  rowBack: {
+    alignItems: "center",
+    backgroundColor: "#ef4444",
+    flex: 1,
+    marginBottom: 12,
+    borderRadius: 12,
+    justifyContent: "flex-end",
+    flexDirection: "row",
+    overflow: "hidden",
+  },
+
+  deleteButton: {
+    width: 90,
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  deleteText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 14,
   },
 
   emptyState: {
