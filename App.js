@@ -12,9 +12,17 @@ import FaqScreen from "./screens/FaqScreen";
 import HistoryScreen from "./screens/HistoryScreen";
 import ConversationScreen from "./screens/ConversationScreen";
 
+// Optional auth screens (if you added them)
+import LoginScreen from "./screens/LoginScreen";
+import RegisterScreen from "./screens/RegisterScreen";
+
+// Auth provider / hook
+import { AuthProvider, useAuth } from "./context/AuthContext";
+
 const Tab = createBottomTabNavigator();
 const RootStack = createNativeStackNavigator();
 const HistoryStack = createNativeStackNavigator();
+const AuthStack = createNativeStackNavigator();
 
 //==================================
 // HISTORY STACK (History → Conversation)
@@ -69,9 +77,7 @@ function MainTabs() {
         component={ChatScreen}
         options={{
           title: "SmartDesk",
-          tabBarIcon: ({ color }) => (
-            <Text style={{ color, fontSize: 16 }}>💬</Text>
-          ),
+          tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 16 }}>💬</Text>,
         }}
       />
 
@@ -81,9 +87,7 @@ function MainTabs() {
         component={FaqScreen}
         options={{
           title: "FAQs",
-          tabBarIcon: ({ color }) => (
-            <Text style={{ color, fontSize: 16 }}>📘</Text>
-          ),
+          tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 16 }}>📘</Text>,
         }}
       />
 
@@ -93,9 +97,7 @@ function MainTabs() {
         component={HistoryStackScreen}
         options={{
           headerShown: false, // stack handles headers
-          tabBarIcon: ({ color }) => (
-            <Text style={{ color, fontSize: 16 }}>🕘</Text>
-          ),
+          tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 16 }}>🕘</Text>,
         }}
       />
     </Tab.Navigator>
@@ -103,18 +105,51 @@ function MainTabs() {
 }
 
 //==================================
-// APP (ROOT STACK: Welcome → Tabs)
+// AUTH FLOW (Login / Register)
+//==================================
+function AuthFlow() {
+  return (
+    <AuthStack.Navigator screenOptions={{ headerTitleAlign: "center" }}>
+      <AuthStack.Screen name="Login" component={LoginScreen} options={{ title: "Login" }} />
+      <AuthStack.Screen name="Register" component={RegisterScreen} options={{ title: "Create account" }} />
+    </AuthStack.Navigator>
+  );
+}
+
+//==================================
+// ROOT NAVIGATOR (decides Welcome / Auth / MainTabs)
+//==================================
+function RootNavigator() {
+  const { user, isGuest, loading } = useAuth();
+
+  // Optional: show a simple loading placeholder while auth state resolves
+  if (loading) return null;
+
+  return (
+    <RootStack.Navigator screenOptions={{ headerShown: false }}>
+      {user || isGuest ? (
+        // If logged in OR continuing as guest → go straight to app
+        <RootStack.Screen name="MainTabs" component={MainTabs} />
+      ) : (
+        // If not logged in and not a guest → show Welcome first; from Welcome user can navigate to AuthFlow
+        <>
+          <RootStack.Screen name="Welcome" component={WelcomeScreen} />
+          <RootStack.Screen name="Auth" component={AuthFlow} />
+        </>
+      )}
+    </RootStack.Navigator>
+  );
+}
+
+//==================================
+// APP (wrap with AuthProvider)
 //==================================
 export default function App() {
   return (
-    <NavigationContainer>
-      <RootStack.Navigator screenOptions={{ headerShown: false }}>
-        {/* INTRO SCREEN */}
-        <RootStack.Screen name="Welcome" component={WelcomeScreen} />
-
-        {/* MAIN APP */}
-        <RootStack.Screen name="MainTabs" component={MainTabs} />
-      </RootStack.Navigator>
-    </NavigationContainer>
+    <AuthProvider>
+      <NavigationContainer>
+        <RootNavigator />
+      </NavigationContainer>
+    </AuthProvider>
   );
 }
