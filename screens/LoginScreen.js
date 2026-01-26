@@ -1,5 +1,14 @@
+// screens/LoginScreen.js
 import React, { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from "react-native";
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  ActivityIndicator,
+} from "react-native";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "../config/firebase";
 import { useAuth } from "../context/AuthContext";
@@ -7,21 +16,46 @@ import { useAuth } from "../context/AuthContext";
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+
   const { continueAsGuest } = useAuth();
 
   const onLogin = async () => {
+    const e = String(email || "").trim();
+    if (!e || !password) {
+      return Alert.alert("Missing info", "Please enter your email and password.");
+    }
+
+    setLoading(true);
     try {
-      if (!email || !password) return Alert.alert("Missing info", "Enter email and password.");
-      await signInWithEmailAndPassword(auth, email.trim(), password);
-      // No manual navigation needed — AuthContext will switch to MainTabs
-    } catch (e) {
-      Alert.alert("Login failed", e?.message || "Please try again.");
+      await signInWithEmailAndPassword(auth, e, password);
+      // AuthContext listener will switch to MainTabs automatically.
+    } catch (err) {
+      console.log("Login error:", err);
+      // Friendly error messages for common Firebase errors
+      const msg =
+        (err?.code === "auth/invalid-email" && "Invalid email address.") ||
+        (err?.code === "auth/user-not-found" && "No account found with that email.") ||
+        (err?.code === "auth/wrong-password" && "Incorrect password.") ||
+        err?.message ||
+        "Login failed — please try again.";
+      Alert.alert("Login failed", msg);
+    } finally {
+      setLoading(false);
     }
   };
 
   const onGuest = async () => {
-    await continueAsGuest();
-    // No manual navigation needed — RootNavigator will switch to MainTabs
+    setLoading(true);
+    try {
+      await continueAsGuest();
+      // RootNavigator observes isGuest and will show MainTabs.
+    } catch (err) {
+      console.log("Guest error:", err);
+      Alert.alert("Error", "Couldn't continue as guest. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -36,6 +70,8 @@ export default function LoginScreen({ navigation }) {
         keyboardType="email-address"
         value={email}
         onChangeText={setEmail}
+        editable={!loading}
+        returnKeyType="next"
       />
       <TextInput
         style={styles.input}
@@ -43,17 +79,33 @@ export default function LoginScreen({ navigation }) {
         secureTextEntry
         value={password}
         onChangeText={setPassword}
+        editable={!loading}
+        returnKeyType="done"
       />
 
-      <TouchableOpacity style={styles.primaryBtn} onPress={onLogin}>
-        <Text style={styles.primaryText}>Log In</Text>
+      <TouchableOpacity
+        style={[styles.primaryBtn, loading && { opacity: 0.7 }]}
+        onPress={onLogin}
+        activeOpacity={0.8}
+        disabled={loading}
+      >
+        {loading ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={styles.primaryText}>Log In</Text>
+        )}
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.secondaryBtn} onPress={onGuest}>
+      <TouchableOpacity
+        style={[styles.secondaryBtn, loading && { opacity: 0.7 }]}
+        onPress={onGuest}
+        activeOpacity={0.8}
+        disabled={loading}
+      >
         <Text style={styles.secondaryText}>Continue as Guest</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity onPress={() => navigation.navigate("Register")}>
+      <TouchableOpacity onPress={() => navigation.navigate("Register")} disabled={loading}>
         <Text style={styles.link}>Create an account</Text>
       </TouchableOpacity>
     </View>

@@ -14,7 +14,7 @@ export default function WelcomeScreen({ navigation }) {
 
   const onAuth = () => {
     // go to the auth stack (Login / Register)
-    navigation.navigate("Auth");
+    navigation.navigate("Auth", { screen: "Login" });
   };
 
   return (
