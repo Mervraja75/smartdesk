@@ -2,12 +2,25 @@
 import React, { useMemo } from "react";
 import { View, Text, StyleSheet, FlatList, TouchableOpacity } from "react-native";
 
-// ✅ Phase 1: Devices → (Laptops / Printers / Monitors)
+/*
+  Navigation logic:
+  - Devices  -> Laptops / Printers / Monitors
+  - Laptops  -> Mac / Windows
+  - Mac / Windows -> leaf issues -> deep-link to Chat with prefill
+*/
+
+// Top-level Devices list
 const DEVICE_SUBCATEGORIES = ["Laptops", "Printers", "Monitors"];
 
-// ✅ Issues lists (demo)
+// If a category has further subcategories (e.g. Laptops -> Mac/Windows)
+const SUBCATEGORY_MAP = {
+  Laptops: ["Mac", "Windows"],
+};
+
+// Leaf issues for actual troubleshooting options
 const ISSUE_MAP = {
-  Laptops: [
+  // Laptops leafs are split under Mac / Windows
+  Mac: [
     "Battery not charging",
     "Won't power on",
     "Slow performance",
@@ -15,6 +28,16 @@ const ISSUE_MAP = {
     "No sound / audio issues",
     "Screen is flickering / black",
   ],
+  Windows: [
+    "Battery not charging",
+    "Won't boot / Blue screen",
+    "Slow performance / high CPU",
+    "Wi-Fi not connecting",
+    "No sound / audio issues",
+    "Display driver issues / flicker",
+  ],
+
+  // Printers & Monitors remain leaf categories
   Printers: [
     "Printer offline",
     "Paper jam",
@@ -34,27 +57,44 @@ export default function CategoryScreen({ route, navigation }) {
   const title = route?.params?.title || "Category";
   const passedItems = route?.params?.items || [];
 
-  // Decide what to show in the list
+  // Decide which list to show:
+  // 1) If caller passed items, use them (explicit)
+  // 2) If top-level Devices, show DEVICE_SUBCATEGORIES
+  // 3) If current title has subcategories, show them
+  // 4) If current title has leaf issues, show them
   const items = useMemo(() => {
     if (Array.isArray(passedItems) && passedItems.length > 0) return passedItems;
     if (title === "Devices") return DEVICE_SUBCATEGORIES;
+    if (SUBCATEGORY_MAP[title]) return SUBCATEGORY_MAP[title];
+    if (ISSUE_MAP[title]) return ISSUE_MAP[title];
     return [];
   }, [title, passedItems]);
 
-  // safe parent-tab navigation to Chat (with fallback)
+  // Safe attempt to navigate to Chat tab and pass a prefill param.
+  // CategoryScreen lives inside the SmartDesk stack, which is a child of the Tab navigator.
+  // navigation.getParent() should return the Tab navigator.
   const goToChatTab = (prefill) => {
-    const parent = navigation.getParent?.();
-    if (parent && typeof parent.navigate === "function") {
-      // parent is likely the Tab navigator — navigate to Chat tab
-      parent.navigate("Chat", { prefill });
+    const tabParent = navigation.getParent?.();
+    if (tabParent && typeof tabParent.navigate === "function") {
+      // Navigate to the Chat tab and pass params
+      tabParent.navigate("Chat", { prefill });
     } else {
-      // fallback — try to navigate normally
+      // Fallback (should rarely be used)
       navigation.navigate("Chat", { prefill });
     }
   };
 
   const handleSelect = (item) => {
-    // If they tapped a subcategory (Laptops/Printers/Monitors), go deeper
+    // If this item itself has subcategories (e.g., Laptops -> Mac/Windows) go deeper
+    if (SUBCATEGORY_MAP[item]) {
+      navigation.navigate("Category", {
+        title: item,
+        items: SUBCATEGORY_MAP[item],
+      });
+      return;
+    }
+
+    // If the item is a known leaf that has issues (ISSUE_MAP key), show those issues
     if (ISSUE_MAP[item]) {
       navigation.navigate("Category", {
         title: item,
@@ -63,14 +103,19 @@ export default function CategoryScreen({ route, navigation }) {
       return;
     }
 
-    // Leaf item => send to Chat with prefill
+    // Otherwise treat it as a real issue (leaf) and deep-link to Chat with prefill
     const prefill = `I am having an issue with ${title}: ${item}. Please help me troubleshoot step-by-step.`;
-
     goToChatTab(prefill);
   };
 
   const renderItem = ({ item }) => {
-    const isSubcategory = !!ISSUE_MAP[item];
+    const isSubcategory = !!SUBCATEGORY_MAP[item];
+    const isCategoryWithIssues = !!ISSUE_MAP[item] && !isSubcategory;
+    const hint = isSubcategory
+      ? "View subcategories"
+      : isCategoryWithIssues
+      ? "View common issues"
+      : "Tap to get help";
 
     return (
       <TouchableOpacity
@@ -79,9 +124,7 @@ export default function CategoryScreen({ route, navigation }) {
         onPress={() => handleSelect(item)}
       >
         <Text style={styles.itemTitle}>{item}</Text>
-        <Text style={styles.itemHint}>
-          {isSubcategory ? "View common issues" : "Tap to get help"}
-        </Text>
+        <Text style={styles.itemHint}>{hint}</Text>
       </TouchableOpacity>
     );
   };
