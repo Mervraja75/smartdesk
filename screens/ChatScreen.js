@@ -1,3 +1,4 @@
+// screens/ChatScreen.js
 //==================================
 // IMPORTS
 //==================================
@@ -42,6 +43,11 @@ export default function ChatScreen({ route, navigation }) {
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
 
+  // ✅ Auto-growing input height
+  const MIN_INPUT_HEIGHT = 42;
+  const MAX_INPUT_HEIGHT = 140;
+  const [inputHeight, setInputHeight] = useState(MIN_INPUT_HEIGHT);
+
   const flatListRef = useRef(null);
   const typingTimeoutRef = useRef(null);
 
@@ -69,7 +75,7 @@ export default function ChatScreen({ route, navigation }) {
   }, [messages]);
 
   //==================================
-  // ✅ PREFILL FROM CATEGORY / DEVICES
+  // ✅ PREFILL FROM CATEGORY / DEVICES (auto-send once + clear reliably)
   //==================================
   useEffect(() => {
     const prefill = route?.params?.prefill;
@@ -77,16 +83,19 @@ export default function ChatScreen({ route, navigation }) {
     if (typeof prefill === "string" && prefill.trim()) {
       if (lastPrefillRef.current !== prefill) {
         lastPrefillRef.current = prefill;
+
+        // Show it briefly in the input
         setInput(prefill);
 
-        // ✅ Auto-send ONCE
+        // ✅ Auto-send ONCE (and clear input after sending)
         if (!autoSendPrefillRef.current) {
           autoSendPrefillRef.current = true;
-          setTimeout(() => sendMessage(prefill), 300);
-        }
 
-        // ✅ Clear param so it won’t re-trigger
-        navigation?.setParams?.({ prefill: undefined });
+          setTimeout(() => {
+            sendMessage(prefill, true);
+            navigation?.setParams?.({ prefill: undefined });
+          }, 300);
+        }
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -230,30 +239,46 @@ export default function ChatScreen({ route, navigation }) {
     }));
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 12000);
+    const timeout = setTimeout(() => controller.abort(), 15000);
 
-    const response = await fetch(AI_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: text, history: payloadHistory }),
-      signal: controller.signal,
-    }).finally(() => clearTimeout(timeout));
+    try {
+      const res = await fetch(AI_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text, history: payloadHistory }),
+        signal: controller.signal,
+      });
 
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data?.error || "AI request failed");
+      const raw = await res.text();
+
+      if (raw.trim().startsWith("<")) {
+        throw new Error(`Backend returned HTML. Status ${res.status}`);
+      }
+
+      let data;
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        throw new Error(`Backend did not return JSON. Raw: ${raw.slice(0, 120)}`);
+      }
+
+      if (!res.ok) {
+        throw new Error(data?.error || `AI request failed (${res.status})`);
+      }
+
+      return data.reply;
+    } finally {
+      clearTimeout(timeout);
     }
-
-    return data.reply;
   };
 
   //==================================
   // CORE SEND LOGIC
   //==================================
-  const sendMessage = (text) => {
-    if (!text.trim() || isTyping) return;
+  const sendMessage = (text, clearInputAfterSend = false) => {
+    const clean = String(text || "").trim();
+    if (!clean || isTyping) return;
 
-    // ✅ Reset auto-send guard after it fires once
     autoSendPrefillRef.current = false;
 
     if (typingTimeoutRef.current) {
@@ -261,7 +286,7 @@ export default function ChatScreen({ route, navigation }) {
       typingTimeoutRef.current = null;
     }
 
-    const userMsg = createMessage(text, "user");
+    const userMsg = createMessage(clean, "user");
 
     setMessages((prev) => {
       const updated = [...prev, userMsg];
@@ -269,6 +294,12 @@ export default function ChatScreen({ route, navigation }) {
       persistLiveSession(updated);
       return updated;
     });
+
+    // ✅ Clear input immediately if requested (prefill / chip behavior)
+    if (clearInputAfterSend) {
+      setInput("");
+      setInputHeight(MIN_INPUT_HEIGHT);
+    }
 
     setIsTyping(true);
 
@@ -283,11 +314,11 @@ export default function ChatScreen({ route, navigation }) {
 
       let aiText = "";
       try {
-        aiText = await fetchAIReply(text, historySnapshot);
+        aiText = await fetchAIReply(clean, historySnapshot);
       } catch (e) {
         aiText =
           "AI is unavailable right now — using Smart Replies.\n\n" +
-          getReply(text);
+          getReply(clean);
         console.log("AI fallback:", e?.message || e);
       }
 
@@ -304,14 +335,18 @@ export default function ChatScreen({ route, navigation }) {
   };
 
   const handleSend = () => {
-    if (!input.trim()) return;
     const text = input.trim();
+    if (!text) return;
+
+    // ✅ Clear UI immediately so it doesn't “stay” in the box
     setInput("");
+    setInputHeight(MIN_INPUT_HEIGHT);
+
     sendMessage(text);
   };
 
   //==================================
-  // NEW CHAT (FINALIZE THEN CLEAR)
+  // NEW CHAT
   //==================================
   const clearCurrentChat = () => {
     Alert.alert(
@@ -328,6 +363,7 @@ export default function ChatScreen({ route, navigation }) {
             setMessages([]);
             setInput("");
             setIsTyping(false);
+            setInputHeight(MIN_INPUT_HEIGHT);
 
             sessionIdRef.current = Date.now().toString();
             sessionCreatedAtRef.current = Date.now();
@@ -345,7 +381,7 @@ export default function ChatScreen({ route, navigation }) {
   };
 
   //==================================
-  // SUGGESTION CHIPS (ONBOARDING ONLY)
+  // SUGGESTION CHIPS
   //==================================
   const suggestions = [
     "Wi-Fi not working",
@@ -356,7 +392,8 @@ export default function ChatScreen({ route, navigation }) {
   ];
 
   const handleSuggestionPress = (text) => {
-    sendMessage(text);
+    setInput(text);
+    setTimeout(() => sendMessage(text, true), 120);
   };
 
   //==================================
@@ -369,16 +406,14 @@ export default function ChatScreen({ route, navigation }) {
       keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
     >
       <View style={styles.container}>
-        {/* --- CHAT CONTROLS --- */}
         {messages.length > 0 && (
           <View style={styles.chatControls}>
             <TouchableOpacity onPress={clearCurrentChat}>
-              <Text style={styles.clearText}> Start New Chat</Text>
+              <Text style={styles.clearText}>Start New Chat</Text>
             </TouchableOpacity>
           </View>
         )}
 
-        {/* --- SUGGESTION CHIPS --- */}
         {messages.length === 0 && (
           <ScrollView
             horizontal
@@ -398,7 +433,6 @@ export default function ChatScreen({ route, navigation }) {
           </ScrollView>
         )}
 
-        {/* --- CHAT LIST --- */}
         <FlatList
           ref={flatListRef}
           data={messages}
@@ -419,9 +453,7 @@ export default function ChatScreen({ route, navigation }) {
                   { opacity, transform: [{ translateY }, { scale }] },
                 ]}
               >
-                <Text
-                  style={item.sender === "user" ? styles.userText : styles.aiText}
-                >
+                <Text style={item.sender === "user" ? styles.userText : styles.aiText}>
                   {item.text}
                 </Text>
               </Animated.View>
@@ -429,7 +461,6 @@ export default function ChatScreen({ route, navigation }) {
           }}
         />
 
-        {/* --- TYPING INDICATOR --- */}
         {isTyping && (
           <View style={styles.typingRow}>
             <View style={styles.typingAvatar}>
@@ -444,13 +475,22 @@ export default function ChatScreen({ route, navigation }) {
         {/* --- INPUT BAR --- */}
         <View style={styles.inputContainer}>
           <TextInput
-            style={styles.input}
+            style={[styles.input, { height: Math.max(MIN_INPUT_HEIGHT, inputHeight) }]}
             placeholder="Type your issue…"
+            placeholderTextColor="#9ca3af"
             value={input}
             onChangeText={setInput}
-            returnKeyType="send"
-            onSubmitEditing={handleSend}
+            multiline
+            textAlignVertical="top"
+            scrollEnabled={inputHeight >= MAX_INPUT_HEIGHT}
+            underlineColorAndroid="transparent"
+            onContentSizeChange={(e) => {
+              const h = e.nativeEvent.contentSize.height;
+              const clamped = Math.max(MIN_INPUT_HEIGHT, Math.min(MAX_INPUT_HEIGHT, h));
+              setInputHeight(clamped);
+            }}
           />
+
           <TouchableOpacity
             style={[styles.sendButton, { opacity: input.trim() ? 1 : 0.5 }]}
             onPress={handleSend}
@@ -536,7 +576,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderTopWidth: 1,
     borderColor: "#e5e7eb",
-    alignItems: "center",
+    alignItems: "flex-end",
   },
 
   input: {
@@ -546,7 +586,8 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: "#fff",
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingTop: 10,
+    paddingBottom: 10,
     fontSize: 15,
     marginRight: 8,
   },

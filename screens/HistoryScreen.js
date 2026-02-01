@@ -92,7 +92,7 @@ export default function HistoryScreen() {
     <View style={styles.container}>
       <SwipeListView
         data={history}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item, index) => String(item?.id ?? `${item?.createdAt ?? "no-date"}-${index}`)}
         renderItem={renderItem}
         renderHiddenItem={renderHiddenItem}
         rightOpenValue={-90}
