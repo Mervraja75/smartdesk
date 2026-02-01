@@ -1,4 +1,3 @@
-// screens/WelcomeScreen.js
 import React from "react";
 import { View, Text, StyleSheet, Image, TouchableOpacity } from "react-native";
 import { useAuth } from "../context/AuthContext";
@@ -6,103 +5,122 @@ import { useAuth } from "../context/AuthContext";
 export default function WelcomeScreen({ navigation }) {
   const { continueAsGuest } = useAuth();
 
-  const onGuest = async () => {
+  const handleGuest = async () => {
     await continueAsGuest();
-    // replace so user cannot go back to Welcome
-    navigation.replace("MainTabs");
+    navigation.replace("MainTabs"); // goes to SmartDeskHomeScreen
   };
 
-  const onAuth = () => {
-    // go to the auth stack (Login / Register)
+  const handleLogin = () => {
     navigation.navigate("Auth", { screen: "Login" });
   };
 
   return (
     <View style={styles.container}>
-      <View style={styles.centerContent}>
-        <Image source={require("../assets/icon.png")} style={styles.logo} />
-        <Text style={styles.title}>Welcome to SmartDesk</Text>
-        <Text style={styles.subtitle}>Your IT support assistant</Text>
+      {/* LOGO + INTRO */}
+      <View style={styles.top}>
+        <Image
+          source={require("../assets/icon.png")}
+          style={styles.logo}
+        />
+        <Text style={styles.title}>SmartDesk</Text>
+        <Text style={styles.subtitle}>
+          Your campus IT support assistant
+        </Text>
+
+        <Text style={styles.description}>
+          Get instant help with school-issued devices, software, and accounts —
+          no ticket needed for common issues.
+        </Text>
       </View>
 
+      {/* ACTION BUTTONS */}
       <View style={styles.actions}>
-        <TouchableOpacity style={styles.primaryBtn} onPress={onGuest}>
-          <Text style={styles.primaryText}>Continue as guest</Text>
+        <TouchableOpacity style={styles.primaryBtn} onPress={handleGuest}>
+          <Text style={styles.primaryText}>Continue as Guest</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.ghostBtn} onPress={onAuth}>
-          <Text style={styles.ghostText}>Log in or create an account</Text>
+        <TouchableOpacity style={styles.secondaryBtn} onPress={handleLogin}>
+          <Text style={styles.secondaryText}>Log in or Create Account</Text>
         </TouchableOpacity>
-
-        <Text style={styles.tapText}>Tap a button to continue</Text>
       </View>
     </View>
   );
 }
 
+//==================================
+// STYLES
+//==================================
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#3498db",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 48,
     paddingHorizontal: 24,
+    paddingVertical: 48,
+    justifyContent: "space-between",
   },
-  centerContent: {
+
+  top: {
     alignItems: "center",
     marginTop: 40,
   },
+
   logo: {
     width: 120,
     height: 120,
-    marginBottom: 18,
     borderRadius: 24,
+    marginBottom: 18,
   },
+
   title: {
-    fontSize: 26,
-    fontWeight: "800",
+    fontSize: 30,
+    fontWeight: "900",
     color: "#fff",
-    textAlign: "center",
     marginBottom: 6,
   },
+
   subtitle: {
-    fontSize: 15,
+    fontSize: 16,
     color: "rgba(255,255,255,0.95)",
-    textAlign: "center",
+    marginBottom: 16,
   },
+
+  description: {
+    fontSize: 14,
+    color: "rgba(255,255,255,0.9)",
+    textAlign: "center",
+    lineHeight: 20,
+    maxWidth: 320,
+  },
+
   actions: {
     width: "100%",
-    alignItems: "center",
   },
+
   primaryBtn: {
-    width: "100%",
-    backgroundColor: "#fff",
-    padding: 14,
-    borderRadius: 12,
+    backgroundColor: "#ffffff",
+    paddingVertical: 14,
+    borderRadius: 14,
     alignItems: "center",
     marginBottom: 12,
   },
+
   primaryText: {
     color: "#3498db",
-    fontWeight: "800",
     fontSize: 16,
+    fontWeight: "800",
   },
-  ghostBtn: {
-    width: "100%",
-    padding: 12,
-    borderRadius: 12,
+
+  secondaryBtn: {
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.8)",
+    paddingVertical: 14,
+    borderRadius: 14,
     alignItems: "center",
-    marginBottom: 18,
   },
-  ghostText: {
-    color: "rgba(255,255,255,0.95)",
-    fontWeight: "600",
-  },
-  tapText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "rgba(255,255,255,0.9)",
-    marginTop: 8,
+
+  secondaryText: {
+    color: "#ffffff",
+    fontSize: 15,
+    fontWeight: "700",
   },
 });

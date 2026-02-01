@@ -1,21 +1,13 @@
+// screens/HistoryScreen.js
 //==================================
 // IMPORTS
 //==================================
 import React, { useCallback, useState } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Alert,
-} from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, Alert } from "react-native";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { SwipeListView } from "react-native-swipe-list-view";
 
-import {
-  getChatHistory,
-  deleteHistorySession,
-} from "../storage/chatStorage";
+import { getChatHistory, deleteHistorySession } from "../storage/chatStorage";
 
 //==================================
 // HISTORY SCREEN
@@ -26,7 +18,24 @@ export default function HistoryScreen() {
 
   const loadHistory = async () => {
     const data = await getChatHistory();
-    setHistory(data);
+
+    // ✅ Sort newest first (nice UX)
+    const sorted = (Array.isArray(data) ? data : []).sort(
+      (a, b) => (b?.createdAt || 0) - (a?.createdAt || 0)
+    );
+
+    // ✅ De-dupe by id to prevent "duplicate key" errors
+    const seen = new Set();
+    const deduped = [];
+    for (const s of sorted) {
+      const id = String(s?.id ?? "");
+      if (!id) continue;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      deduped.push(s);
+    }
+
+    setHistory(deduped);
   };
 
   // Reload history whenever screen is focused
@@ -58,7 +67,7 @@ export default function HistoryScreen() {
   // Front view (normal card)
   const renderItem = ({ item }) => {
     const firstUserMessage =
-      item.messages.find((m) => m.sender === "user")?.text || "Conversation";
+      item?.messages?.find((m) => m.sender === "user")?.text || "Conversation";
 
     const date = new Date(item.createdAt).toLocaleDateString();
 
@@ -92,7 +101,7 @@ export default function HistoryScreen() {
     <View style={styles.container}>
       <SwipeListView
         data={history}
-        keyExtractor={(item, index) => String(item?.id ?? `${item?.createdAt ?? "no-date"}-${index}`)}
+        keyExtractor={(item) => String(item.id)} // ✅ stable, unique
         renderItem={renderItem}
         renderHiddenItem={renderHiddenItem}
         rightOpenValue={-90}

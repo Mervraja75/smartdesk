@@ -6,6 +6,7 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 
 // Screens
+import WelcomeScreen from "./screens/WelcomeScreen"; // ✅ ADD THIS
 import ChatScreen from "./screens/ChatScreen";
 import FaqScreen from "./screens/FaqScreen";
 import HistoryScreen from "./screens/HistoryScreen";
@@ -92,7 +93,6 @@ function MainTabs() {
         },
       }}
     >
-      {/* SMARTDESK TAB */}
       <Tab.Screen
         name="SmartDesk"
         component={SmartDeskStackScreen}
@@ -105,7 +105,6 @@ function MainTabs() {
         }}
       />
 
-      {/* CHAT TAB */}
       <Tab.Screen
         name="Chat"
         component={ChatScreen}
@@ -117,7 +116,6 @@ function MainTabs() {
         }}
       />
 
-      {/* FAQ TAB */}
       <Tab.Screen
         name="FAQ"
         component={FaqScreen}
@@ -129,7 +127,6 @@ function MainTabs() {
         }}
       />
 
-      {/* HISTORY TAB */}
       <Tab.Screen
         name="History"
         component={HistoryStackScreen}
@@ -167,7 +164,7 @@ function AuthFlow() {
 //==================================
 // ROOT NAVIGATOR
 // - If logged in OR guest -> MainTabs
-// - else -> AuthFlow (Login first)
+// - else -> Welcome first, then Auth
 //==================================
 function RootNavigator() {
   const { user, isGuest, loading } = useAuth();
@@ -179,7 +176,11 @@ function RootNavigator() {
       {user || isGuest ? (
         <RootStack.Screen name="MainTabs" component={MainTabs} />
       ) : (
-        <RootStack.Screen name="Auth" component={AuthFlow} />
+        <>
+          {/* ✅ SHOW THIS FIRST */}
+          <RootStack.Screen name="Welcome" component={WelcomeScreen} />
+          <RootStack.Screen name="Auth" component={AuthFlow} />
+        </>
       )}
     </RootStack.Navigator>
   );
