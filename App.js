@@ -6,7 +6,7 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 
 // Screens
-import WelcomeScreen from "./screens/WelcomeScreen"; // ✅ ADD THIS
+import WelcomeScreen from "./screens/WelcomeScreen"; 
 import ChatScreen from "./screens/ChatScreen";
 import FaqScreen from "./screens/FaqScreen";
 import HistoryScreen from "./screens/HistoryScreen";
