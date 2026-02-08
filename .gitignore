@@ -56,3 +56,4 @@ metro-cache/
 # Secrets
 .env
 backend/.env
+*.mp4
